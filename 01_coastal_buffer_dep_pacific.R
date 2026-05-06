@@ -40,7 +40,7 @@ cline_simple <- simplifyGeom(cline, tolerance = 10)
 toc()
 
 # 3. BATCH COMPUTING BUFFER CREATION for SMALL countries =======================
-target <- big_iso3
+target <- small_iso3
 
 ## 3.1 Set up log file ----
 log_file <- "buffer_processing_log.txt"
@@ -54,13 +54,15 @@ for (iso in target) {
   # Try catch, if the code it crashes, it catch the error, save it and then jumps
   # to the next country
   loop_status <<- tryCatch({
+    country_lines <- cline_simple |> 
+      filter(eez_territory == iso)
   # If the country has zero rows, stop immediately and log it.
     if (nrow(country_lines) == 0) {
       stop("Zero shoreline features found for this country.")
     }
     
     # --- YOUR WORKING GEOMETRY CODE ---
-    country_lines <- cline_simple[cline_simple$country_code == iso, ]
+
     
     cline_dissol <- aggregate(country_lines, by = "year")
     
@@ -78,11 +80,11 @@ for (iso in target) {
     poly_10km_mle$country_code <- iso
     
     # Export directly to disk (insert = TRUE appends to the same file)
-    output_file <- paste0(layers, iso,"_mle_buffers", iso, ".gpkg")
+    output_file <- paste0(layers, iso,"_mle_buffers.gpkg")
     
-    writeVector(poly_1km_mle, output_file, layer = "buffer_1km", insert = TRUE)
-    writeVector(poly_5km_mle, output_file, layer = "buffer_5km", insert = TRUE)
-    writeVector(poly_10km_mle, output_file, layer = "buffer_10km", insert = TRUE)
+    writeVector(poly_1km_mle, output_file, layer = paste0(iso,"_buffer_1km"), insert = TRUE, overwrite = T)
+    writeVector(poly_5km_mle, output_file, layer = paste0(iso,"_buffer_5km"), insert = TRUE)
+    writeVector(poly_10km_mle, output_file, layer = paste0(iso,"_buffer_10km"), insert = TRUE)
     
     # If it gets to this line, it succeeded! This message is sent to loop_status.
     paste(iso," SUCCESS")
