@@ -32,6 +32,9 @@ output <- ("C:/Users/luisr/SPC/SDD GIS - Documents/Coastal Population/CoastPop_U
 cline <- vect(paste0(layers,"ncl_dep_ls_coastlines_0-7-0-55.gpkg"))
 
 # Process coastline raw input to streamline process
+# Remove insufficient or unstable data
+cline <- cline|> 
+  filter(certainty == "good")
 # Dissolve by year all the pieces to merge each year in one single layer
 cline_dissol <- aggregate(cline, by = "year")
 # Removing small zig zags that increase unnecesarilly the processing time.

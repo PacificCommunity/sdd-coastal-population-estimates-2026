@@ -22,7 +22,7 @@ output <- ("C:/Users/luisr/SPC/SDD GIS - Documents/Coastal Population/CoastPop_U
 # There is a country code for every line so we can split the process by country extent
 # for the moment we import directly from # https://data.digitalearthpacific.org/#dep_ls_coastlines/
 
-# Load layer
+# Load layer covers whole pacific
 cline <- vect(paste0(layers,"dep_ls_coastlines_0-7-0-55.gpkg"))
 
 
@@ -33,6 +33,10 @@ iso3 <- unique(cline$eez_territory)
 big_iso3 <- c("PNG", "PYF", "VUT", "FJI", "SBL")
 # Rest of the countries that will go into single loop
 small_iso3 <- setdiff(iso3, big_iso3)
+
+# Remove insufficient or unstable data
+cline <- cline|> 
+  filter(certainty == "good")
 
 # Simplify once so we do not repeat same process 22 times
 tic()
@@ -80,7 +84,7 @@ for (iso in target) {
     poly_10km_mle$country_code <- iso
     
     # Export directly to disk (insert = TRUE appends to the same file)
-    output_file <- paste0(layers, iso,"_mle_buffers.gpkg")
+    output_file <- paste0(layers, "coastal_buffers_dep/", iso3,"_mle_buffers.gpkg")
     
     writeVector(poly_1km_mle, output_file, layer = paste0(iso,"_buffer_1km"), insert = TRUE, overwrite = T)
     writeVector(poly_5km_mle, output_file, layer = paste0(iso,"_buffer_5km"), insert = TRUE)
