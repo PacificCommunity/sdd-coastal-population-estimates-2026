@@ -396,4 +396,4 @@ writeVector(poly_1km_mle, output_file, layer = paste0(iso, "_buffer_1km"), overw
 writeVector(poly_5km_mle, output_file, layer = paste0(iso, "_buffer_5km"), insert = TRUE)
 writeVector(poly_10km_mle, output_file, layer = paste0(iso, "_buffer_10km"), insert = TRUE)
 
-message("Fiji processing complete!)
+message("Fiji processing complete!") 
