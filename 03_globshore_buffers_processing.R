@@ -7,6 +7,10 @@
 ## Statistics for Development Division - SDD ##
 
 # 1. SETTINGS =================================================================
+# Clean workspace
+rm(list = ls())
+gc()
+
 source("setup.R")
 
 # Set data paths

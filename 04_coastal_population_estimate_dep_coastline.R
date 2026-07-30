@@ -3,8 +3,13 @@
 ## Statistics for Development Division - SDD ##
 
 # 1. SETTINGS =================================================================
-source("setup.R")
 
+# Clean workspace
+rm(list = ls())
+gc()
+
+source("setup.R")
+library(writexl)
 # current date
 date <- format(Sys.Date(), "%Y%m%d")
 
@@ -124,6 +129,12 @@ all_pac_rasters <- all_pac_rasters[order(names(all_pac_rasters))]
 print("Master list created containing:")
 print(names(all_pac_rasters))
 
+## 2.4 Total Population fo 2026 official from PDH -----
+totpop_df <- read_csv(paste0(layers,"pop_stat.csv")) |> 
+  filter(obsTime == "2026") |>  # Filter for 2026
+  rename(country_code = ISO3) |> 
+  select(country_code, Country, obsValue)
+
 # 3. ZONAL STATISTICS TO CALCULATE COASTAL POPULATION USING DIGITAL EARTH PACIFIC DERIVED DATASET ========
 
 # List buffer files 
@@ -208,15 +219,161 @@ transposed_data_dep <- prov_results_dep %>%
 
 # Merge with total population results
 final_results_dep <- transposed_data_dep %>% 
-  merge(., totpop_df, by="iso3") %>% 
+  merge(., totpop_df, by="country_code") %>% 
+  rename(totpop = obsValue,
+         country_name = Country) |> 
   mutate(pop_dep_b1km_per = pop_dep_1km /totpop,
          pop_dep_b5km_per = pop_dep_5km /totpop,
          pop_dep_b10km_per = pop_dep_10km  /totpop) %>% 
-  relocate(grid_file, .after = pop_dep_b10km_per)
+  relocate(grid_file, .after = pop_dep_b10km_per) |> 
+  relocate(country_name, .after = country_code)
+
+# Add some more metadata
+final_results_dep <- final_results_dep |> 
+  mutate(population_source = ifelse(grepl("t_pop_2026", grid_file), "SDD", "WorldPop"),
+         coastal_buffer_source = "Digital Earth - Pacific Coastlines Change")
 
 print(final_results_dep)
 
-write.xlsx(final_results_gs,paste0(output,date,"_coastal_population_gs.xlsx"))
+write_xlsx(final_results_dep,paste0(output,date,"_coastal_population_dep_2026.xlsx"))
+
+
+# 4. ZONAL STATISTICS TO CALCULATE COASTAL POPULATION USING BUFFERS DERIVED FROM GLOBAL SHORELINE DATASET ----
+# Run the analysis using global shoreline dataset https://gee-community-catalog.org/projects/shoreline/
+# We want to compare if we have inportant differences between the two datasets.
+
+# List buffer files from Golbal Shoreline dataset
+gs_buffer_list <- list.files("C:/Users/luisr/SPC/SDD GIS - Documents/Coastal Population/CoastPop_Update2025/Data/coastal buffers globalshore",
+                             pattern = "\\.gpkg$", full.names = TRUE)
+
+# Check that buffers are all dissolved and have 1 single feature per layer
+for (buffer in gs_buffer_list){
+  buffer_layer <- vect(buffer)
+  nrow <- length(buffer_layer)
+  print(c( basename(buffer), nrow))
+}
+# Initialize results list
+results_gs <- list()
+
+# Loop through each GeoPackage file
+for (buffer_file in gs_buffer_list) {
+  
+  # Extract ISO3 from the file name to find the right population grid
+  file_basename <- basename(buffer_file)
+  buffer_iso3 <- toupper(sub("_.*", "", file_basename)) 
+  
+  # Pull the corresponding raster from the master list
+  pop_grid <- all_pac_rasters[[buffer_iso3]]
+  
+  # Skip if no matching grid is found
+  if (is.null(pop_grid)) {
+    warning(paste("No matching grid found for:", file_basename))
+    next
+  }
+  
+  # Get the actual filename of the raster for metadata
+  grid_filename <- basename(sources(pop_grid))
+  
+  # Get all layer names inside this specific GeoPackage
+  gpkg_layers <- vector_layers(buffer_file)
+  
+  # Loop through each layer inside the GeoPackage
+  for (lyr_name in gpkg_layers) {
+    
+    # Load the specific layer
+    buffer <- vect(buffer_file, layer = lyr_name)
+    
+    # Extract the distance from the layer name (e.g., "1km" from "WSM_buffer_1km")
+    buffer_distance <- gsub(".*_([0-9]+km).*", "\\1", lyr_name)
+    
+    # Check that CRS matches; if not, reproject buffer to raster CRS
+    if (crs(buffer) != crs(pop_grid)) {
+      buffer <- project(buffer, crs(pop_grid))
+    }
+    
+    # Calculate zonal statistics
+    stats <- exact_extract(pop_grid, st_as_sf(buffer), fun = "sum", progress = FALSE)
+    
+    # Add metadata
+    stats_df <- data.frame(sum_pop = stats) %>%
+      mutate(
+        grid_file = grid_filename,
+        iso3_code = buffer_iso3,
+        buffer_dist = buffer_distance,
+        layer_name = lyr_name
+      ) %>%
+      bind_cols(as.data.frame(buffer)) # Binds buffer attributes (if any exist)
+    
+    # Append to results using a unique key for the list
+    list_key <- paste0(buffer_iso3, "_", buffer_distance)
+    results_gs[[list_key]] <- stats_df
+    
+    # Print confirmation
+    print(paste("Processed -> ISO3:", buffer_iso3, 
+                "| Layer:", lyr_name, 
+                "| Grid:", grid_filename))
+  }
+}
+
+
+# Combine results into a single data frame
+prov_results_gs <- do.call(rbind, results_gs)
+
+# Transpose to a single row per country
+transposed_data_gs <- prov_results_gs %>%
+  rename(country_code = iso3_code) |> 
+  select(country_code, buffer_dist, sum_pop, grid_file) %>% 
+  pivot_wider(
+    names_from = buffer_dist,
+    values_from = sum_pop,
+    names_prefix = "pop_gs_") %>% 
+  select(country_code, pop_gs_1km , pop_gs_5km, pop_gs_10km, grid_file)
 
 
 
+# Merge with total population results
+final_results_gs <- transposed_data_gs %>% 
+  merge(., totpop_df, by="country_code") %>% 
+  rename(totpop = obsValue,
+         country_name = Country) |> 
+  mutate(pop_gs_b1km_per = pop_gs_1km /totpop,
+         pop_gs_b5km_per = pop_gs_5km /totpop,
+         pop_gs_b10km_per = pop_gs_10km  /totpop) %>% 
+  relocate(grid_file, .after = pop_gs_b10km_per) |> 
+  relocate(country_name, .after = country_code)
+
+
+# Add some more metadata
+final_results_gs <- final_results_gs |> 
+  mutate(population_source = ifelse(grepl("t_pop_2026", grid_file), "SDD", "WorldPop"),
+         coastal_buffer_source = "Global Shoreline Dataset")
+
+print(final_results_gs)
+
+write_xlsx(final_results_gs,paste0(output,date,"_coastal_population_gs_2026.xlsx"))
+
+# 5. DATA COMPARISON AND CONCLUSIONS ===========================================
+## 5.1 Compare Coastal Populations between DEP and GSD ----
+dep_vs_gsd <- merge(final_results_dep, final_results_gs, by = "country_code") %>%
+  select(-totpop.x) %>%
+  rename(totpop = totpop.y) %>%
+  mutate(diff_1kmb_pop_per = pop_dep_b1km_per  - pop_gs_b1km_per,
+         diff_5kmb_pop_per = pop_dep_b5km_per  - pop_gs_b5km_per,
+         diff_10kmb_pop_per = pop_dep_b10km_per - pop_gs_b10km_per) %>%
+  mutate(diff_1km_pop = pop_dep_1km - pop_gs_1km,
+         diff_5km_pop = pop_dep_5km - pop_gs_5km,
+         diff_10km_pop = pop_dep_10km  - pop_gs_10km)
+
+# Plot comparison
+# Plot bar graph putting both percentages together
+plot_compare <- dep_vs_gsd %>%
+  select(country_code, diff_1kmb_pop_per, diff_5kmb_pop_per, diff_10kmb_pop_per) %>%
+  pivot_longer(cols = -"country_code", names_to = "buffer", values_to = "diff_pop_per") %>%
+  mutate(buffer = factor(buffer, levels = c("diff_1kmb_pop_per", "diff_5kmb_pop_per", "diff_10kmb_pop_per"))) %>%
+  ggplot(aes(x = country_code, y = diff_pop_per, fill = buffer)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Differences in population percentages between buffer datasets / National Buffers - GS Buffers",
+       x = "ISO3", y = "Population percentage difference") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+plot_compare
