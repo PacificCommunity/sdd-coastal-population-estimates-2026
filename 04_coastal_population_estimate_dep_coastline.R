@@ -235,7 +235,67 @@ final_results_dep <- final_results_dep |>
 
 print(final_results_dep)
 
-write_xlsx(final_results_dep,paste0(output,date,"_coastal_population_dep_2026.xlsx"))
+# Calculate results by subregion
+
+# 1. Map country codes to subregions
+df_with_regions <- final_results_dep |> 
+  mutate(
+    subregion = case_when(
+      country_code %in% c("FJI", "NCL", "PNG", "SLB", "VUT") ~ "Melanesia",
+      country_code %in% c("FSM", "GUM", "KIR", "MHL", "MNP", "NRU", "PLW") ~ "Micronesia",
+      country_code %in% c("ASM", "COK", "NIU", "PCN", "PYF", "TKL", "TON", "TUV","WLF", "WSM") ~ "Polynesia",
+      TRUE ~ "Other" # Catch-all for any missed territories
+    )
+  )
+
+# 2. Calculate standard subregions
+subregions <- df_with_regions |>
+  group_by(subregion) |>
+  summarise(
+    pop_dep_1km  = sum(pop_dep_1km, na.rm = TRUE),
+    pop_dep_5km  = sum(pop_dep_5km, na.rm = TRUE),
+    pop_dep_10km = sum(pop_dep_10km, na.rm = TRUE),
+    totpop       = sum(totpop, na.rm = TRUE)
+  )
+
+# 3. Calculate Melanesia excluding PNG
+melanesia_no_png <- df_with_regions |>
+  filter(subregion == "Melanesia" & country_code != "PNG") |>
+  summarise(
+    subregion    = "Melanesia (excl. PNG)",
+    pop_dep_1km  = sum(pop_dep_1km, na.rm = TRUE),
+    pop_dep_5km  = sum(pop_dep_5km, na.rm = TRUE),
+    pop_dep_10km = sum(pop_dep_10km, na.rm = TRUE),
+    totpop       = sum(totpop, na.rm = TRUE)
+  )
+
+# 4. Calculate Pacific Regional Total
+regional_total <- df_with_regions |>
+  summarise(
+    subregion    = "Pacific Region Total",
+    pop_dep_1km  = sum(pop_dep_1km, na.rm = TRUE),
+    pop_dep_5km  = sum(pop_dep_5km, na.rm = TRUE),
+    pop_dep_10km = sum(pop_dep_10km, na.rm = TRUE),
+    totpop       = sum(totpop, na.rm = TRUE)
+  )
+
+# 5. Bind rows and recalculate the percentages for the aggregates
+final_summary <- bind_rows(subregions, melanesia_no_png, regional_total) |> 
+  # Filter out "Other" if any non-SPC entities slipped through
+  filter(subregion != "Other") |> 
+  rename(country_name = subregion ) |> 
+  mutate(
+    pop_dep_b1km_per  = pop_dep_1km / totpop,
+    pop_dep_b5km_per  = pop_dep_5km / totpop,
+    pop_dep_b10km_per = pop_dep_10km / totpop
+  )
+# Bind the original data and the new summary rows together
+final_results_dep_combined <- bind_rows(final_results_dep, final_summary) 
+
+tail(final_results_dep_combined, 10)
+# View the results
+print(final_summary)
+write_xlsx(final_results_dep_combined,paste0(output,date,"_coastal_population_dep_2026.xlsx"))
 
 
 # 4. ZONAL STATISTICS TO CALCULATE COASTAL POPULATION USING BUFFERS DERIVED FROM GLOBAL SHORELINE DATASET ----
@@ -377,3 +437,5 @@ plot_compare <- dep_vs_gsd %>%
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 plot_compare
+
+file.exists("C:/Users/luisr/SPC/SDD GIS - Documents/Coastal Population/CoastPop_Update2026/Results/20260721_coastal_population_dep_2026.xlsx")
