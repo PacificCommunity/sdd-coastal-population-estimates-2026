@@ -88,10 +88,17 @@ coastal_percentage <- final_results_dep |>
     # SDMX dimensions
     # --------------------------------------------------------
     
+    
     DATAFLOW = dataflow,
     FREQ = freq,
     TIME_PERIOD = time_period,
-    ref_area = country_code,
+    ref_area = case_when(country_name == "Melanesia" ~ "MEL",
+                         country_name == "Micronesia" ~ "MIC",
+                         country_name == "Polynesia" ~ "POL",
+                         country_name == "Melanesia (excl. PNG)" ~ "MELXPNG",
+                         country_name == "Pacific Region Total" ~ "_T",
+                         TRUE ~ country_code
+    ),
     INDICATOR = "COASTALPOPRF",
     UNIT_MEASURE = "PERCENT",
     UNIT_MULT = "",
@@ -143,7 +150,13 @@ coastal_absolute <- final_results_dep |>
     DATAFLOW = dataflow,
     FREQ = freq,
     TIME_PERIOD = time_period,
-    ref_area = country_code,
+    ref_area = case_when(country_name == "Melanesia" ~ "MEL",
+                         country_name == "Micronesia" ~ "MIC",
+                         country_name == "Polynesia" ~ "POL",
+                         country_name == "Melanesia (excl. PNG)" ~ "MELXPNG",
+                         country_name == "Pacific Region Total" ~ "_T",
+                         TRUE ~ country_code
+    ),
     INDICATOR = "COASTALPOPAF",
     RANGE = "_T",
     OBS_VALUE = totpop,
@@ -156,7 +169,6 @@ coastal_absolute <- final_results_dep |>
     # --------------------------------------------------------
     OBS_COMMENT = paste0("Estimated total population for year 2026. ", "Population source: ", population_source, ". Coastal buffer source: ", coastal_buffer_source, ".")) |>
   select(DATAFLOW, FREQ, TIME_PERIOD, ref_area, INDICATOR, RANGE, OBS_VALUE, UNIT_MEASURE, UNIT_MULT, OBS_STATUS, DATA_SOURCE, OBS_COMMENT)  
-
 # ============================================================
 # iv. COMBINE BOTH INDICATORS
 # ============================================================
@@ -169,10 +181,11 @@ final_data <- bind_rows(coastal_percentage, coastal_absolute)
 
 countries <- data.frame(
   ref_area = c("ASM","COK","FSM","FJI","GUM","KIR","MHL","NRU","NIU","MNP","NCL","PLW","PNG","PCN",
-               "PYF","WSM","SLB","TKL","TON","TUV","VUT","WLF"),
+               "PYF","WSM","SLB","TKL","TON","TUV","VUT","WLF", "MEL", "MIC", "POL", "MELXPNG", "_T"),
   GEO_PICT = c("AS","CK","FM","FJ","GU","KI","MH","NR","NU","MP","NC","PW","PG","PN","PF","WS",
-               "SB","TK","TO","TV","VU","WF")
+               "SB","TK","TO","TV","VU","WF","MEL", "MIC", "POL", "MELXPNG", "_T")
 )
+
 
 final_sdmx_data <- merge(final_data, countries, by = "ref_area") |>
   select(DATAFLOW, FREQ, TIME_PERIOD, GEO_PICT, INDICATOR, RANGE, OBS_VALUE, UNIT_MEASURE, UNIT_MULT, OBS_STATUS, DATA_SOURCE, OBS_COMMENT)
